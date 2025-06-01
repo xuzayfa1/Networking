@@ -1,0 +1,68 @@
+stages:
+  - build
+  - deploy
+
+variables:
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_DRIVER: overlay2
+  LIGHTSAIL_HOST: <lightsail-public-ip>
+  SSH_USER: ubuntu
+  CI_REGISTRY: registry.gitlab.com
+
+build-backend:
+  stage: build
+  image: docker:20.10
+  services:
+    - docker:dind
+  before_script:
+    - apk add --no-cache curl
+    - docker info
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY || echo "Docker login failed"
+  script:
+    - cd app-backend
+    - docker build -t $CI_REGISTRY_IMAGE/backend:latest .
+    - docker push $CI_REGISTRY_IMAGE/backend:latest
+  only:
+    - master
+
+build-frontend:
+  stage: build
+  image: docker:20.10
+  services:
+    - docker:dind
+  before_script:
+    - apk add --no-cache curl
+    - docker info
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY || echo "Docker login failed"
+  script:
+    - cd app-frontend
+    - docker build -t $CI_REGISTRY_IMAGE/frontend:latest .
+    - docker push $CI_REGISTRY_IMAGE/frontend:latest
+  only:
+    - master
+
+deploy:
+  stage: deploy
+  image: docker:latest
+
+  services:
+    - docker:dind
+
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+
+  before_script:
+  - mkdir -p ~/.ssh
+  - echo "$SSH_PRIVATE_KEY" > ~/.ssh/gitlab_key
+  - chmod 600 ~/.ssh/gitlab_key
+  - ssh-keyscan -H $LIGHTSAIL_HOST >> ~/.ssh/known_hosts
+
+  script:
+  - scp -i ~/.ssh/gitlab_key docker-compose.yml init-db.sh $SSH_USER@$LIGHTSAIL_HOST:~/myproject/
+  - ssh -i ~/.ssh/gitlab_key $SSH_USER@$LIGHTSAIL_HOST "
+      cd ~/myproject &&
+      export CI_REGISTRY_IMAGE=registry.gitlab.com/cyberstalk0210/myproject &&
+      docker-compose down &&
+      docker-compose pull &&
+      docker-compose up -d
+    "

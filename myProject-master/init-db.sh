@@ -1,0 +1,7 @@
+#!/bin/bash
+set -e
+
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+    CREATE DATABASE IF NOT EXISTS crm;
+    GRANT ALL PRIVILEGES ON DATABASE crm TO $POSTGRES_USER;
+EOSQL
